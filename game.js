@@ -70,11 +70,16 @@ class Game {
                 const keyEl = document.createElement('div');
                 keyEl.className = 'key';
                 keyEl.id = `key-${key}`;
-                keyEl.innerText = key.toUpperCase();
-                
-                // Add secondary EN char
+                // Show letter only if it participates in training (present in charPool)
+                if (this.charPool.includes(key)) {
+                    keyEl.innerText = key.toUpperCase();
+                } else {
+                    keyEl.innerText = '';
+                }
+
+                // Add secondary EN char only if the corresponding RU key is in training
                 const enChar = LAYOUT_EN[i][j];
-                if (enChar) {
+                if (enChar && this.charPool.includes(key)) {
                     const secondary = document.createElement('span');
                     secondary.className = 'secondary';
                     secondary.innerText = enChar.toUpperCase();
@@ -231,6 +236,8 @@ class Game {
     updateCharPool() {
         const allChars = "аовылдфжпрэкукенгшщзхъячсмитьбю";
         this.charPool = allChars.substring(0, this.level * 3);
+        // Re-render the keyboard to reflect newly added training letters
+        this.renderKeyboard();
     }
 
     gameLoop(time) {

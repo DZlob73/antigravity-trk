@@ -1,10 +1,12 @@
 const LAYOUT_RU = [
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
     ["й", "ц", "у", "к", "е", "н", "г", "ш", "щ", "з", "х", "ъ"],
     ["ф", "ы", "в", "а", "п", "р", "о", "л", "д", "ж", "э"],
     ["я", "ч", "с", "м", "и", "т", "ь", "б", "ю"]
 ];
 
 const LAYOUT_EN = [
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
     ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"],
     ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'"],
     ["z", "x", "c", "v", "b", "n", "m", ",", "."]
@@ -19,7 +21,33 @@ const FINGER_MAP = {
     'н': 7, 'г': 7, 'ш': 8, 'щ': 9, 'з': 10, 'х': 10, 'ъ': 10,
     'я': 1, 'ч': 2, 'с': 3, 'м': 4, 'и': 4,
     'т': 7, 'ь': 7, 'б': 8, 'ю': 9, '.': 10,
+    // EN
+    'a': 1, 's': 2, 'd': 3, 'f': 4, 'g': 4,
+    'h': 7, 'j': 7, 'k': 8, 'l': 9, ';': 10, "'": 10,
+    'q': 1, 'w': 2, 'e': 3, 'r': 4, 't': 4,
+    'y': 7, 'u': 7, 'i': 8, 'o': 9, 'p': 10, '[': 10, ']': 10,
+    'z': 1, 'x': 2, 'c': 3, 'v': 4, 'b': 4,
+    'n': 7, 'm': 7, ',': 8, '.': 9, '/': 10,
+    // Numbers
+    '1': 1, '2': 2, '3': 3, '4': 4, '5': 4,
+    '6': 7, '7': 7, '8': 8, '9': 9, '0': 10
 };
+
+const CHAR_POOLS = {
+    ru: "аовылдфжпрэкукенгшщзхъячсмитьбю",
+    en: "asdfghjkl;qwertyuiop[]zxcvbnm,."
+};
+
+// Global map to link RU and EN characters on the same physical key
+const KEY_MAP = {}; 
+LAYOUT_RU.forEach((row, i) => {
+    row.forEach((ruChar, j) => {
+        const enChar = LAYOUT_EN[i] ? LAYOUT_EN[i][j] : null;
+        const entry = { ru: ruChar, en: enChar };
+        KEY_MAP[ruChar] = entry;
+        if (enChar) KEY_MAP[enChar] = entry;
+    });
+});
 
 const FINGER_NAMES = [
     "Левый мизинец", "Левый безымянный", "Левый средний", "Левый указательный", "Большой палец",
@@ -34,6 +62,7 @@ class Game {
         this.totalKeystrokes = 0;
         this.startTime = null;
         this.isPlaying = false;
+        this.language = 'ru';
         this.entities = [];
         this.charPool = "ао";
         this.spawnRate = 2000; // ms
@@ -49,7 +78,8 @@ class Game {
             errors: document.getElementById('errors-display'),
             startScreen: document.getElementById('start-screen'),
             keyboard: document.getElementById('virtual-keyboard'),
-            fingerHint: document.getElementById('finger-text')
+            fingerHint: document.getElementById('finger-text'),
+            langToggle: document.getElementById('lang-toggle')
         };
 
         this.init();
@@ -57,34 +87,51 @@ class Game {
 
     init() {
         this.renderKeyboard();
-        window.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        // Listen for keydown for gameplay and start trigger
+        document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        
+        if (this.dom.langToggle) {
+            this.dom.langToggle.addEventListener('click', () => {
+                this.toggleLanguage();
+                this.dom.langToggle.blur(); // Remove focus to prevent Enter from re-triggering the click
+            });
+        }
+
         requestAnimationFrame((t) => this.gameLoop(t));
     }
 
     renderKeyboard() {
         this.dom.keyboard.innerHTML = '';
+        const isRu = this.language === 'ru';
+
         LAYOUT_RU.forEach((row, i) => {
             const rowEl = document.createElement('div');
             rowEl.className = 'kb-row';
             row.forEach((key, j) => {
                 const keyEl = document.createElement('div');
                 keyEl.className = 'key';
-                keyEl.id = `key-${key}`;
-                // Show letter only if it participates in training (present in charPool)
-                if (this.charPool.includes(key)) {
-                    keyEl.innerText = key.toUpperCase();
+                
+                const ruChar = key;
+                const enChar = LAYOUT_EN[i] ? LAYOUT_EN[i][j] : null;
+                
+                const primaryChar = isRu ? ruChar : enChar;
+                const secondaryChar = isRu ? enChar : ruChar;
+                
+                keyEl.id = `key-${ruChar}`; // Internal ID always based on RU row/col position
+                keyEl.setAttribute('data-en', enChar);
+                keyEl.setAttribute('data-ru', ruChar);
+
+                // Show letter only if it participates in training
+                if (this.charPool.includes(primaryChar)) {
+                    keyEl.innerText = primaryChar.toUpperCase();
+                    if (secondaryChar) {
+                        const secondary = document.createElement('span');
+                        secondary.className = 'secondary';
+                        secondary.innerText = secondaryChar.toUpperCase();
+                        keyEl.appendChild(secondary);
+                    }
                 } else {
                     keyEl.innerText = '';
-                }
-
-                // Add secondary EN char only if the corresponding RU key is in training
-                const enChar = LAYOUT_EN[i][j];
-                if (enChar && this.charPool.includes(key)) {
-                    const secondary = document.createElement('span');
-                    secondary.className = 'secondary';
-                    secondary.innerText = enChar.toUpperCase();
-                    keyEl.appendChild(secondary);
-                    keyEl.setAttribute('data-en', enChar);
                 }
 
                 rowEl.appendChild(keyEl);
@@ -140,11 +187,9 @@ class Game {
         // Try to find the entity
         for (let i = 0; i < this.entities.length; i++) {
             const entity = this.entities[i];
-            // Match against RU or EN (using data-en attribute of keys if needed, but easier to just check char)
-            const targetChar = entity.char;
-            const targetEn = document.getElementById(`key-${targetChar}`)?.getAttribute('data-en');
-
-            if (key === targetChar || key === targetEn) {
+            const mapping = KEY_MAP[entity.char];
+            
+            if (mapping && (key === mapping.ru || key === mapping.en)) {
                 this.hitEntity(entity);
                 matched = true;
                 this.totalKeystrokes++;
@@ -163,6 +208,23 @@ class Game {
         this.highlightKey(key);
         this.updateStats();
         this.checkLevelUp();
+    }
+
+    toggleLanguage() {
+        this.language = this.language === 'ru' ? 'en' : 'ru';
+        if (this.dom.langToggle) {
+            this.dom.langToggle.innerText = this.language.toUpperCase();
+        }
+        
+        // Reset game on language change for consistency
+        this.isPlaying = false;
+        this.level = 1;
+        this.entities = [];
+        this.dom.entitiesContainer.innerHTML = '';
+        this.dom.startScreen.classList.remove('hidden');
+        
+        this.updateCharPool();
+        this.renderKeyboard();
     }
 
     isPrintable(key) {
@@ -196,16 +258,17 @@ class Game {
     }
 
     highlightKey(key) {
-        const keyEl = [...document.querySelectorAll('.key')].find(el => 
-            el.id === `key-${key}` || el.getAttribute('data-en') === key
-        );
+        const mapping = KEY_MAP[key];
+        if (!mapping) return;
+
+        const keyEl = document.getElementById(`key-${mapping.ru}`);
+        
         if (keyEl) {
             keyEl.classList.add('active');
             setTimeout(() => keyEl.classList.remove('active'), 150);
             
             // Update finger hint
-            const ruChar = keyEl.id.replace('key-', '');
-            const fingerIndex = FINGER_MAP[ruChar];
+            const fingerIndex = FINGER_MAP[mapping.ru] || FINGER_MAP[mapping.en];
             if (fingerIndex) {
                 this.dom.fingerHint.innerText = FINGER_NAMES[fingerIndex - 1];
             }
@@ -215,7 +278,9 @@ class Game {
     updateStats() {
         const elapsedMinutes = (Date.now() - this.startTime) / 60000;
         const cpm = elapsedMinutes > 0 ? Math.round(this.totalKeystrokes / elapsedMinutes) : 0;
-        const accuracy = this.totalKeystrokes > 0 ? Math.round(((this.totalKeystrokes - this.errors) / this.totalKeystrokes) * 100) : 100;
+        
+        const totalActions = this.score + this.errors;
+        const accuracy = totalActions > 0 ? Math.round((this.score / totalActions) * 100) : 100;
 
         this.dom.cpm.innerText = cpm;
         this.dom.accuracy.innerText = `${accuracy}%`;
@@ -234,8 +299,8 @@ class Game {
     }
 
     updateCharPool() {
-        const allChars = "аовылдфжпрэкукенгшщзхъячсмитьбю";
-        this.charPool = allChars.substring(0, this.level * 3);
+        const pool = CHAR_POOLS[this.language];
+        this.charPool = pool.substring(0, this.level * 3);
         // Re-render the keyboard to reflect newly added training letters
         this.renderKeyboard();
     }

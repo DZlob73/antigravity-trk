@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRK Modern - Клавиатурный Тренажер</title>
+    <meta name="description"
+        content="Современный клавиатурный тренажер для повышения скорости печати и точности. Попробуйте сейчас!">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+    <div id="app">
+        <header class="hud" role="banner">
+            <div class="stat-box">
+                <span class="label">Уровень</span>
+                <span id="level-display" class="value">1</span>
+            </div>
+            <div class="stat-box">
+                <span class="label">CPM</span>
+                <span id="cpm-display" class="value">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="label">Точность</span>
+                <span id="accuracy-display" class="value">100%</span>
+            </div>
+            <div class="stat-box">
+                <span class="label">Ошибки</span>
+                <span id="errors-display" class="value">0</span>
+            </div>
+        </header>
+
+        <main id="game-area">
+            <div id="start-screen" class="overlay">
+                <h1>TRK MODERN</h1>
+                <p>Нажмите <span class="highlight">Enter</span>, чтобы начать</p>
+                <div class="controls-hint">
+                    Используйте латинскую или русскую раскладку
+                </div>
+            </div>
+            <div id="entities-container"></div>
+        </main>
+
+        <footer id="keyboard-container" role="contentinfo">
+            <div id="virtual-keyboard">
+                <!-- Клавиатура будет сгенерирована динамически -->
+            </div>
+            <div id="finger-hint">
+                <span id="finger-text">Поставьте пальцы на основную позицию</span>
+            </div>
+        </footer>
+    </div>
+    <script src="game.js" defer></script>
+</body>
+
+</html>

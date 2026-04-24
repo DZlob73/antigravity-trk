@@ -5,11 +5,25 @@ const LAYOUT_RU = [
     ["я", "ч", "с", "м", "и", "т", "ь", "б", "ю"]
 ];
 
+const SHIFT_LAYOUT_RU = [
+    ["!", "\"", "№", ";", "%", ":", "?", "*", "(", ")"],
+    ["Й", "Ц", "У", "К", "Е", "Н", "Г", "Ш", "Щ", "З", "Х", "Ъ"],
+    ["Ф", "Ы", "В", "А", "П", "Р", "О", "Л", "Д", "Ж", "Э"],
+    ["Я", "Ч", "С", "М", "И", "Т", "Ь", "Б", "Ю"]
+];
+
 const LAYOUT_EN = [
     ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
     ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]"],
     ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'"],
     ["z", "x", "c", "v", "b", "n", "m", ",", "."]
+];
+
+const SHIFT_LAYOUT_EN = [
+    ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")"],
+    ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{", "}"],
+    ["A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "\""],
+    ["Z", "X", "C", "V", "B", "N", "M", "<", ">"]
 ];
 
 // Mapper for finger assignment (1-10, from left pinky to right pinky)
@@ -33,6 +47,11 @@ const FINGER_MAP = {
     '6': 7, '7': 7, '8': 8, '9': 9, '0': 10
 };
 
+// Add uppercase and symbols to FINGER_MAP
+Object.keys(FINGER_MAP).forEach(key => {
+    FINGER_MAP[key.toUpperCase()] = FINGER_MAP[key];
+});
+
 const CHAR_POOLS = {
     ru: "аовылдфжпрэкукенгшщзхъячсмитьбю",
     en: "asdfghjkl;qwertyuiop[]zxcvbnm,."
@@ -40,12 +59,15 @@ const CHAR_POOLS = {
 
 // Global map to link RU and EN characters on the same physical key
 const KEY_MAP = {}; 
-LAYOUT_RU.forEach((row, i) => {
-    row.forEach((ruChar, j) => {
-        const enChar = LAYOUT_EN[i] ? LAYOUT_EN[i][j] : null;
-        const entry = { ru: ruChar, en: enChar };
-        KEY_MAP[ruChar] = entry;
-        if (enChar) KEY_MAP[enChar] = entry;
+[LAYOUT_RU, SHIFT_LAYOUT_RU].forEach((layout, lIdx) => {
+    layout.forEach((row, i) => {
+        row.forEach((ruChar, j) => {
+            const enLayout = lIdx === 0 ? LAYOUT_EN : SHIFT_LAYOUT_EN;
+            const enChar = enLayout[i] ? enLayout[i][j] : null;
+            const entry = { ru: ruChar, en: enChar, isShift: lIdx === 1 };
+            KEY_MAP[ruChar] = entry;
+            if (enChar) KEY_MAP[enChar] = entry;
+        });
     });
 });
 
@@ -68,6 +90,7 @@ class Game {
         this.spawnRate = 2000; // ms
         this.fallSpeed = 2; // pixels per frame
         this.lastSpawnTime = 0;
+        this.shiftPressed = false;
 
         this.dom = {
             gameArea: document.getElementById('game-area'),
@@ -88,7 +111,20 @@ class Game {
     init() {
         this.renderKeyboard();
         // Listen for keydown for gameplay and start trigger
-        document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Shift') {
+                this.shiftPressed = true;
+                this.renderKeyboard();
+            }
+            this.handleKeyDown(e);
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'Shift') {
+                this.shiftPressed = false;
+                this.renderKeyboard();
+            }
+        });
         
         if (this.dom.langToggle) {
             this.dom.langToggle.addEventListener('click', () => {
@@ -103,31 +139,40 @@ class Game {
     renderKeyboard() {
         this.dom.keyboard.innerHTML = '';
         const isRu = this.language === 'ru';
+        const currentLayout = isRu ? (this.shiftPressed ? SHIFT_LAYOUT_RU : LAYOUT_RU) : (this.shiftPressed ? SHIFT_LAYOUT_EN : LAYOUT_EN);
+        const secondaryLayout = isRu ? (this.shiftPressed ? SHIFT_LAYOUT_EN : LAYOUT_EN) : (this.shiftPressed ? SHIFT_LAYOUT_RU : LAYOUT_RU);
 
-        LAYOUT_RU.forEach((row, i) => {
+        currentLayout.forEach((row, i) => {
             const rowEl = document.createElement('div');
             rowEl.className = 'kb-row';
+
+            // Add Shift key to the last row
+            if (i === 3) {
+                const shiftEl = document.createElement('div');
+                shiftEl.className = `key shift-key ${this.shiftPressed ? 'active' : ''}`;
+                shiftEl.innerText = 'Shift';
+                rowEl.appendChild(shiftEl);
+            }
+
             row.forEach((key, j) => {
                 const keyEl = document.createElement('div');
                 keyEl.className = 'key';
                 
-                const ruChar = key;
-                const enChar = LAYOUT_EN[i] ? LAYOUT_EN[i][j] : null;
+                const primaryChar = key;
+                const secondaryChar = secondaryLayout[i] ? secondaryLayout[i][j] : null;
                 
-                const primaryChar = isRu ? ruChar : enChar;
-                const secondaryChar = isRu ? enChar : ruChar;
-                
-                keyEl.id = `key-${ruChar}`; // Internal ID always based on RU row/col position
-                keyEl.setAttribute('data-en', enChar);
-                keyEl.setAttribute('data-ru', ruChar);
+                const ruKeyChar = isRu ? primaryChar : secondaryChar;
+                keyEl.id = `key-${ruKeyChar}`; 
+                keyEl.setAttribute('data-char', primaryChar);
 
                 // Show letter only if it participates in training
-                if (this.charPool.includes(primaryChar)) {
-                    keyEl.innerText = primaryChar.toUpperCase();
+                const pool = this.charPool + this.charPool.toUpperCase();
+                if (pool.includes(primaryChar)) {
+                    keyEl.innerText = primaryChar;
                     if (secondaryChar) {
                         const secondary = document.createElement('span');
                         secondary.className = 'secondary';
-                        secondary.innerText = secondaryChar.toUpperCase();
+                        secondary.innerText = secondaryChar;
                         keyEl.appendChild(secondary);
                     }
                 } else {
@@ -136,6 +181,15 @@ class Game {
 
                 rowEl.appendChild(keyEl);
             });
+
+            // Add second Shift key to the last row
+            if (i === 3) {
+                const shiftEl = document.createElement('div');
+                shiftEl.className = `key shift-key ${this.shiftPressed ? 'active' : ''}`;
+                shiftEl.innerText = 'Shift';
+                rowEl.appendChild(shiftEl);
+            }
+
             this.dom.keyboard.appendChild(rowEl);
         });
     }
@@ -153,10 +207,15 @@ class Game {
     }
 
     spawnEntity() {
-        const char = this.charPool[Math.floor(Math.random() * this.charPool.length)];
+        let char = this.charPool[Math.floor(Math.random() * this.charPool.length)];
+        // 30% chance for uppercase if level > 2
+        if (this.level > 2 && Math.random() > 0.7) {
+            char = char.toUpperCase();
+        }
+
         const el = document.createElement('div');
         el.className = 'letter-entity';
-        el.innerText = char.toUpperCase();
+        el.innerText = char;
         
         const x = 50 + Math.random() * (this.dom.gameArea.clientWidth - 100);
         el.style.left = `${x}px`;
@@ -179,9 +238,9 @@ class Game {
             return;
         }
 
-        if (!this.isPlaying) return;
+        if (!this.isPlaying || e.key === 'Shift') return;
 
-        const key = e.key.toLowerCase();
+        const key = e.key; // Keep original case
         let matched = false;
 
         // Try to find the entity
@@ -189,7 +248,8 @@ class Game {
             const entity = this.entities[i];
             const mapping = KEY_MAP[entity.char];
             
-            if (mapping && (key === mapping.ru || key === mapping.en)) {
+            // Check for direct match or cross-language match
+            if (key === entity.char || (mapping && (key === mapping.ru || key === mapping.en))) {
                 this.hitEntity(entity);
                 matched = true;
                 this.totalKeystrokes++;
@@ -261,7 +321,10 @@ class Game {
         const mapping = KEY_MAP[key];
         if (!mapping) return;
 
-        const keyEl = document.getElementById(`key-${mapping.ru}`);
+        // Always highlight the base RU key element for position consistency
+        // But for uppercase/symbols, we need to map back to lowercase for ID
+        const baseRu = mapping.ru.toLowerCase();
+        const keyEl = document.getElementById(`key-${mapping.ru}`) || document.getElementById(`key-${baseRu}`);
         
         if (keyEl) {
             keyEl.classList.add('active');

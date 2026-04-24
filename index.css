@@ -186,6 +186,12 @@ body {
     box-shadow: 0 0 20px var(--error-color);
 }
 
+.shift-key {
+    width: 90px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
 .key .secondary {
     font-size: 0.7rem;
     color: var(--text-secondary);

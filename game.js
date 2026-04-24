@@ -57,6 +57,11 @@ const CHAR_POOLS = {
     en: "asdfghjkl;qwertyuiop[]zxcvbnm,."
 };
 
+const WORD_LISTS = {
+    ru: ["мама", "папа", "дом", "лес", "поле", "небо", "солнце", "вода", "земля", "город", "школа", "книга", "ручка", "стол", "стул", "окно", "дверь", "хлеб", "море", "гора"],
+    en: ["home", "tree", "sky", "water", "fire", "earth", "wind", "book", "pen", "table", "chair", "school", "city", "road", "world", "hand", "face", "time", "year", "life"]
+};
+
 // Global map to link RU and EN characters on the same physical key
 const KEY_MAP = {}; 
 [LAYOUT_RU, SHIFT_LAYOUT_RU].forEach((layout, lIdx) => {
@@ -86,6 +91,8 @@ class Game {
         this.isPlaying = false;
         this.language = 'ru';
         this.entities = [];
+        this.mode = 'letters';
+        this.activeEntity = null;
         this.charPool = "ао";
         this.spawnRate = 2000; // ms
         this.fallSpeed = 2; // pixels per frame
@@ -100,9 +107,18 @@ class Game {
             accuracy: document.getElementById('accuracy-display'),
             errors: document.getElementById('errors-display'),
             startScreen: document.getElementById('start-screen'),
+            gameOverScreen: document.getElementById('game-over-screen'),
             keyboard: document.getElementById('virtual-keyboard'),
             fingerHint: document.getElementById('finger-text'),
-            langToggle: document.getElementById('lang-toggle')
+            langToggle: document.getElementById('lang-toggle'),
+            modeToggle: document.getElementById('mode-toggle'),
+            restartBtn: document.getElementById('restart-btn'),
+            finalCpm: document.getElementById('final-cpm'),
+            finalAccuracy: document.getElementById('final-accuracy'),
+            finalErrors: document.getElementById('final-errors'),
+            playerNameInput: document.getElementById('player-name-input'),
+            summaryName: document.getElementById('summary-name'),
+            historyList: document.getElementById('history-list')
         };
 
         this.init();
@@ -129,7 +145,21 @@ class Game {
         if (this.dom.langToggle) {
             this.dom.langToggle.addEventListener('click', () => {
                 this.toggleLanguage();
-                this.dom.langToggle.blur(); // Remove focus to prevent Enter from re-triggering the click
+                this.dom.langToggle.blur();
+            });
+        }
+
+        if (this.dom.modeToggle) {
+            this.dom.modeToggle.addEventListener('click', () => {
+                this.toggleMode();
+                this.dom.modeToggle.blur();
+            });
+        }
+
+        if (this.dom.restartBtn) {
+            this.dom.restartBtn.addEventListener('click', () => {
+                this.dom.gameOverScreen.classList.add('hidden');
+                this.dom.startScreen.classList.remove('hidden');
             });
         }
 
@@ -195,35 +225,68 @@ class Game {
     }
 
     start() {
+        const name = this.dom.playerNameInput.value.trim() || "Аноним";
+        this.playerName = name;
         this.isPlaying = true;
         this.startTime = Date.now();
+        this.totalKeystrokes = 0;
         this.score = 0;
         this.errors = 0;
-        this.totalKeystrokes = 0;
         this.entities = [];
+        this.activeEntity = null;
         this.dom.entitiesContainer.innerHTML = '';
         this.dom.startScreen.classList.add('hidden');
+        this.dom.gameOverScreen.classList.add('hidden');
+        this.updateStats();
+    }
+
+    toggleMode() {
+        this.mode = this.mode === 'letters' ? 'words' : 'letters';
+        if (this.dom.modeToggle) {
+            this.dom.modeToggle.innerText = this.mode === 'letters' ? 'Буквы' : 'Слова';
+        }
+        this.resetGame();
+    }
+
+    resetGame() {
+        this.isPlaying = false;
+        this.level = 1;
+        this.entities = [];
+        this.activeEntity = null;
+        this.dom.entitiesContainer.innerHTML = '';
+        this.dom.startScreen.classList.remove('hidden');
+        this.dom.gameOverScreen.classList.add('hidden');
+        
+        this.updateCharPool();
+        this.renderKeyboard();
         this.updateStats();
     }
 
     spawnEntity() {
-        let char = this.charPool[Math.floor(Math.random() * this.charPool.length)];
-        // 30% chance for uppercase if level > 2
-        if (this.level > 2 && Math.random() > 0.7) {
-            char = char.toUpperCase();
+        let text = "";
+        if (this.mode === 'letters') {
+            text = this.charPool[Math.floor(Math.random() * this.charPool.length)];
+            // 30% chance for uppercase if level > 2
+            if (this.level > 2 && Math.random() > 0.7) {
+                text = text.toUpperCase();
+            }
+        } else {
+            const list = WORD_LISTS[this.language];
+            text = list[Math.floor(Math.random() * list.length)];
         }
 
         const el = document.createElement('div');
         el.className = 'letter-entity';
-        el.innerText = char;
+        this.renderEntityText(el, text, 0);
         
-        const x = 50 + Math.random() * (this.dom.gameArea.clientWidth - 100);
+        const x = 50 + Math.random() * (this.dom.gameArea.clientWidth - 150);
         el.style.left = `${x}px`;
         el.style.top = '-50px';
         
         const entity = {
             element: el,
-            char: char,
+            text: text,
+            typedCount: 0,
             y: -50,
             dead: false
         };
@@ -232,7 +295,26 @@ class Game {
         this.entities.push(entity);
     }
 
+    renderEntityText(element, text, typedCount) {
+        element.innerHTML = '';
+        for (let i = 0; i < text.length; i++) {
+            const span = document.createElement('span');
+            span.innerText = text[i];
+            if (i < typedCount) {
+                span.className = 'typed';
+            } else if (i === typedCount && this.mode === 'words' && element.classList.contains('active-entity')) {
+                span.className = 'active-char';
+            }
+            element.appendChild(span);
+        }
+    }
+
     handleKeyDown(e) {
+        if (e.key === 'Escape' && this.isPlaying) {
+            this.endSession();
+            return;
+        }
+
         if (e.key === 'Enter' && !this.isPlaying) {
             this.start();
             return;
@@ -240,20 +322,62 @@ class Game {
 
         if (!this.isPlaying || e.key === 'Shift') return;
 
-        const key = e.key; // Keep original case
+        const key = e.key;
         let matched = false;
 
-        // Try to find the entity
-        for (let i = 0; i < this.entities.length; i++) {
-            const entity = this.entities[i];
-            const mapping = KEY_MAP[entity.char];
-            
-            // Check for direct match or cross-language match
-            if (key === entity.char || (mapping && (key === mapping.ru || key === mapping.en))) {
-                this.hitEntity(entity);
-                matched = true;
-                this.totalKeystrokes++;
-                break;
+        if (this.mode === 'letters') {
+            for (let i = 0; i < this.entities.length; i++) {
+                const entity = this.entities[i];
+                const mapping = KEY_MAP[entity.text];
+                
+                if (key === entity.text || (mapping && (key === mapping.ru || key === mapping.en))) {
+                    this.hitEntity(entity);
+                    matched = true;
+                    this.totalKeystrokes++;
+                    break;
+                }
+            }
+        } else {
+            // Words Mode
+            if (this.activeEntity) {
+                const nextChar = this.activeEntity.text[this.activeEntity.typedCount];
+                const mapping = KEY_MAP[nextChar];
+
+                if (key === nextChar || (mapping && (key === mapping.ru || key === mapping.en))) {
+                    this.activeEntity.typedCount++;
+                    this.totalKeystrokes++;
+                    matched = true;
+
+                    if (this.activeEntity.typedCount >= this.activeEntity.text.length) {
+                        this.hitEntity(this.activeEntity);
+                        this.activeEntity = null;
+                    } else {
+                        this.renderEntityText(this.activeEntity.element, this.activeEntity.text, this.activeEntity.typedCount);
+                    }
+                }
+            } else {
+                // Find a new word to lock onto
+                for (let i = 0; i < this.entities.length; i++) {
+                    const entity = this.entities[i];
+                    const firstChar = entity.text[0];
+                    const mapping = KEY_MAP[firstChar];
+
+                    if (key === firstChar || (mapping && (key === mapping.ru || key === mapping.en))) {
+                        this.activeEntity = entity;
+                        this.activeEntity.element.classList.add('active-entity');
+                        this.activeEntity.typedCount++;
+                        this.totalKeystrokes++;
+                        matched = true;
+
+                        if (this.activeEntity.typedCount >= this.activeEntity.text.length) {
+                            this.hitEntity(this.activeEntity);
+                            this.activeEntity = null;
+                        } else {
+                            this.renderEntityText(this.activeEntity.element, this.activeEntity.text, this.activeEntity.typedCount);
+                        }
+                        break;
+                    }
+                }
             }
         }
 
@@ -275,16 +399,7 @@ class Game {
         if (this.dom.langToggle) {
             this.dom.langToggle.innerText = this.language.toUpperCase();
         }
-        
-        // Reset game on language change for consistency
-        this.isPlaying = false;
-        this.level = 1;
-        this.entities = [];
-        this.dom.entitiesContainer.innerHTML = '';
-        this.dom.startScreen.classList.remove('hidden');
-        
-        this.updateCharPool();
-        this.renderKeyboard();
+        this.resetGame();
     }
 
     isPrintable(key) {
@@ -339,16 +454,85 @@ class Game {
     }
 
     updateStats() {
+        if (!this.isPlaying || !this.startTime) {
+            this.dom.cpm.innerText = 0;
+            this.dom.accuracy.innerText = '100%';
+            this.dom.errors.innerText = this.errors;
+            this.dom.level.innerText = this.level;
+            return;
+        }
         const elapsedMinutes = (Date.now() - this.startTime) / 60000;
-        const cpm = elapsedMinutes > 0 ? Math.round(this.totalKeystrokes / elapsedMinutes) : 0;
+        const correctKeystrokes = Math.max(0, this.totalKeystrokes - this.errors);
+        const cpm = elapsedMinutes > 0 ? Math.round(correctKeystrokes / elapsedMinutes) : 0;
         
-        const totalActions = this.score + this.errors;
-        const accuracy = totalActions > 0 ? Math.round((this.score / totalActions) * 100) : 100;
+        const accuracy = this.totalKeystrokes > 0 ? Math.round((correctKeystrokes / this.totalKeystrokes) * 100) : 100;
 
         this.dom.cpm.innerText = cpm;
         this.dom.accuracy.innerText = `${accuracy}%`;
         this.dom.errors.innerText = this.errors;
         this.dom.level.innerText = this.level;
+    }
+
+    endSession() {
+        this.isPlaying = false;
+        const cpm = parseInt(this.dom.cpm.innerText);
+        const accuracy = this.dom.accuracy.innerText;
+        
+        this.dom.finalCpm.innerText = cpm;
+        this.dom.finalAccuracy.innerText = accuracy;
+        this.dom.finalErrors.innerText = this.errors;
+        this.dom.summaryName.innerText = this.playerName;
+        
+        this.saveSession(cpm, accuracy);
+        this.renderHistory();
+        
+        this.dom.gameOverScreen.classList.remove('hidden');
+        
+        // Clean up current entities
+        this.entities = [];
+        this.dom.entitiesContainer.innerHTML = '';
+    }
+
+    saveSession(cpm, accuracy) {
+        const session = {
+            name: this.playerName,
+            cpm: cpm,
+            accuracy: accuracy,
+            mode: this.mode === 'letters' ? 'Буквы' : 'Слова',
+            date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        const history = this.loadHistory();
+        history.unshift(session);
+        // Keep only last 5 sessions for current player
+        const playerHistory = history.filter(h => h.name === this.playerName).slice(0, 5);
+        // Also keep other players' history? No, let's just store a general history for simplicity
+        localStorage.setItem('trk_history', JSON.stringify(history.slice(0, 20)));
+    }
+
+    loadHistory() {
+        const history = localStorage.getItem('trk_history');
+        return history ? JSON.parse(history) : [];
+    }
+
+    renderHistory() {
+        const history = this.loadHistory().filter(h => h.name === this.playerName).slice(0, 5);
+        this.dom.historyList.innerHTML = '';
+        
+        if (history.length === 0) {
+            this.dom.historyList.innerHTML = '<li class="history-item">История пока пуста</li>';
+            return;
+        }
+
+        history.forEach(h => {
+            const li = document.createElement('li');
+            li.className = 'history-item';
+            li.innerHTML = `
+                <span class="date">${h.date} <span class="mode-tag">${h.mode}</span></span>
+                <span class="stats">${h.cpm} CPM | ${h.accuracy}</span>
+            `;
+            this.dom.historyList.appendChild(li);
+        });
     }
 
     checkLevelUp() {
@@ -383,6 +567,9 @@ class Game {
                     if (entity.y > this.dom.gameArea.clientHeight) {
                         this.errors++;
                         this.updateStats();
+                        if (this.activeEntity === entity) {
+                            this.activeEntity = null;
+                        }
                         this.dom.entitiesContainer.removeChild(entity.element);
                         this.entities.splice(index, 1);
                     }

@@ -33,6 +33,9 @@
                 <span id="errors-display" class="value">0</span>
             </div>
             <div class="stat-box">
+                <button id="mode-toggle" class="toggle-btn" aria-label="Переключить режим">Буквы</button>
+            </div>
+            <div class="stat-box">
                 <button id="lang-toggle" class="toggle-btn" aria-label="Переключить язык">RU</button>
             </div>
         </header>
@@ -40,11 +43,30 @@
         <main id="game-area">
             <div id="start-screen" class="overlay">
                 <h1>TRK MODERN</h1>
+                <div class="name-entry main-name-entry">
+                    <input type="text" id="player-name-input" placeholder="Введите имя..." maxlength="15">
+                </div>
                 <p>Нажмите <span class="highlight">Enter</span>, чтобы начать</p>
                 <div class="controls-hint">
                     Используйте латинскую или русскую раскладку
                 </div>
             </div>
+
+            <div id="game-over-screen" class="overlay hidden">
+                <h2>ИТОГИ СЕССИИ</h2>
+                <div class="final-stats">
+                    <p>Игрок: <span id="summary-name">Аноним</span></p>
+                    <p>CPM: <span id="final-cpm">0</span></p>
+                    <p>Точность: <span id="final-accuracy">0%</span></p>
+                    <p>Ошибки: <span id="final-errors">0</span></p>
+                </div>
+                <div class="history-container">
+                    <h3>История тренировок</h3>
+                    <ul id="history-list"></ul>
+                </div>
+                <button id="restart-btn" class="toggle-btn">В меню</button>
+            </div>
+
             <div id="entities-container"></div>
         </main>
 

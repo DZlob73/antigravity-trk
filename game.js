@@ -279,7 +279,23 @@ class Game {
         el.className = 'letter-entity';
         this.renderEntityText(el, text, 0);
         
-        const x = 50 + Math.random() * (this.dom.gameArea.clientWidth - 150);
+        // Find corresponding key to align X position
+        const firstChar = text[0].toLowerCase();
+        const mapping = KEY_MAP[firstChar] || KEY_MAP[text[0]];
+        let x = 50 + Math.random() * (this.dom.gameArea.clientWidth - 150);
+
+        if (mapping) {
+            const ruChar = mapping.ru;
+            const keyEl = document.getElementById(`key-${ruChar}`);
+            if (keyEl) {
+                const keyRect = keyEl.getBoundingClientRect();
+                const areaRect = this.dom.gameArea.getBoundingClientRect();
+                // Center the entity over the key
+                x = keyRect.left - areaRect.left + (keyRect.width / 2);
+                el.style.transform = 'translateX(-50%)'; // Center text relative to X
+            }
+        }
+        
         el.style.left = `${x}px`;
         el.style.top = '-50px';
         

@@ -53,8 +53,8 @@ Object.keys(FINGER_MAP).forEach(key => {
 });
 
 const CHAR_POOLS = {
-    ru: "аовлыдфжпркнегушцщйзмтииьсбчюя.хэъ",
-    en: "fjdksla;ghrutyeiwqoqpvmbnc,x.z/"
+    ru: "аопрвлыдфэкенгцзушйхмистчбяюжщь.хъйъ4738291056",
+    en: "fjghdksla;rutyeiwoqpvm bncx,.z/[]'?;:4738291056"
 };
 
 const WORD_LISTS = {
@@ -93,11 +93,16 @@ class Game {
         this.entities = [];
         this.mode = 'letters';
         this.activeEntity = null;
-        this.charPool = "ао";
+        this.charPool = CHAR_POOLS[this.language];
         this.spawnRate = 2000; // ms
-        this.fallSpeed = 2; // pixels per frame
+        this.fallSpeed = 1.2; // pixels per frame
         this.lastSpawnTime = 0;
+        this.pairIndex = 0;
+        this.repeatCount = 0;
+        this.maxRepeats = 3;
+        this.activePairs = [];
         this.shiftPressed = false;
+        this.spawnPending = false;
 
         this.dom = {
             gameArea: document.getElementById('game-area'),
@@ -196,7 +201,9 @@ class Game {
                 keyEl.setAttribute('data-char', primaryChar);
 
                 // Show letter only if it participates in training
-                const pool = this.charPool + this.charPool.toUpperCase();
+                const activeChars = this.entities.map(e => e.text).join('');
+                const pool = activeChars + activeChars.toUpperCase();
+                
                 if (pool.includes(primaryChar)) {
                     keyEl.innerText = primaryChar;
                     if (secondaryChar) {
@@ -263,18 +270,48 @@ class Game {
     }
 
     spawnEntity() {
-        let text = "";
-        if (this.mode === 'letters') {
-            text = this.charPool[Math.floor(Math.random() * this.charPool.length)];
-            // 30% chance for uppercase if level > 2
-            if (this.level > 2 && Math.random() > 0.7) {
-                text = text.toUpperCase();
+        const pool = CHAR_POOLS[this.language];
+        // Now level 1: 3 pairs, level 2: 6 pairs, ..., level 8: 24 pairs (all)
+        const maxAvailablePairs = Math.min(this.level * 3, Math.floor(pool.length / 2));
+        
+        // Cycle through pairs available at this level
+        if (this.repeatCount === 0) {
+            // Priority logic: focus more on the last 4-6 newly added pairs 
+            // instead of cycling through all of them every time.
+            const startIdx = Math.max(0, maxAvailablePairs - 6);
+            this.pairIndex++;
+            
+            if (this.pairIndex >= maxAvailablePairs || this.pairIndex < startIdx) {
+                this.pairIndex = startIdx;
             }
-        } else {
-            const list = WORD_LISTS[this.language];
-            text = list[Math.floor(Math.random() * list.length)];
         }
 
+        const charL = pool[this.pairIndex * 2];
+        const charR = pool[this.pairIndex * 2 + 1];
+        
+        // Delay between members of the pair (decreases with level)
+        const memberDelay = Math.max(0, 1000 - (this.level - 1) * 200);
+        
+        // Spawn Right first
+        if (charR) this.createEntity(charR);
+        
+        // Spawn Left with delay
+        if (charL) {
+            if (memberDelay > 0) {
+                setTimeout(() => this.createEntity(charL), memberDelay);
+            } else {
+                this.createEntity(charL);
+            }
+        }
+
+        // Logic for repeating the same pair
+        this.repeatCount++;
+        if (this.repeatCount >= this.maxRepeats) {
+            this.repeatCount = 0;
+        }
+    }
+
+    createEntity(text) {
         const el = document.createElement('div');
         el.className = 'letter-entity';
         this.renderEntityText(el, text, 0);
@@ -290,9 +327,8 @@ class Game {
             if (keyEl) {
                 const keyRect = keyEl.getBoundingClientRect();
                 const areaRect = this.dom.gameArea.getBoundingClientRect();
-                // Center the entity over the key
                 x = keyRect.left - areaRect.left + (keyRect.width / 2);
-                el.style.transform = 'translateX(-50%)'; // Center text relative to X
+                el.style.transform = 'translateX(-50%)';
             }
         }
         
@@ -309,6 +345,7 @@ class Game {
 
         this.dom.entitiesContainer.appendChild(el);
         this.entities.push(entity);
+        this.renderKeyboard();
     }
 
     renderEntityText(element, text, typedCount) {
@@ -434,6 +471,7 @@ class Game {
             }
             // Remove from entities list to prevent lingering dead entities
             this.entities = this.entities.filter(e => e !== entity);
+            this.renderKeyboard();
         }, 300);
     }
 
@@ -553,26 +591,28 @@ class Game {
 
     checkLevelUp() {
         // Level up every 20 hits
-        if (this.score > 0 && this.score % 20 === 0 && this.level < 8) {
+        if (this.score > 0 && this.score % 20 === 0 && this.level < 12) {
             this.level++;
             this.updateCharPool();
-            this.fallSpeed += 0.2;
-            this.spawnRate = Math.max(800, this.spawnRate - 100);
+            this.fallSpeed += 0.1;
+            // spawnRate is currently managed by the empty-screen check in gameLoop
         }
     }
 
     updateCharPool() {
-        const pool = CHAR_POOLS[this.language];
-        this.charPool = pool.substring(0, this.level * 4);
+        this.charPool = CHAR_POOLS[this.language];
         // Re-render the keyboard to reflect newly added training letters
         this.renderKeyboard();
     }
 
     gameLoop(time) {
         if (this.isPlaying) {
-            if (time - this.lastSpawnTime > this.spawnRate) {
-                this.spawnEntity();
-                this.lastSpawnTime = time;
+            if (this.entities.length === 0 && !this.spawnPending) {
+                this.spawnPending = true;
+                setTimeout(() => {
+                    if (this.isPlaying) this.spawnEntity();
+                    this.spawnPending = false;
+                }, 800); // 0.8s pause between pairs
             }
 
             this.entities.forEach((entity, index) => {
@@ -588,6 +628,7 @@ class Game {
                         }
                         this.dom.entitiesContainer.removeChild(entity.element);
                         this.entities.splice(index, 1);
+                        this.renderKeyboard();
                     }
                 }
             });

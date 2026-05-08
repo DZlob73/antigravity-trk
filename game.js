@@ -53,8 +53,8 @@ Object.keys(FINGER_MAP).forEach(key => {
 });
 
 const CHAR_POOLS = {
-    ru: "аовылдфжпрэкукенгшщзхъячсмитьбю",
-    en: "asdfghjkl;qwertyuiop[]zxcvbnm,."
+    ru: "аовлыдфжпркнегушцщйзмтииьсбчюя.хэъ",
+    en: "fjdksla;ghrutyeiwqoqpvmbnc,x.z/"
 };
 
 const WORD_LISTS = {
@@ -553,7 +553,7 @@ class Game {
 
     checkLevelUp() {
         // Level up every 20 hits
-        if (this.score > 0 && this.score % 20 === 0 && this.level < 10) {
+        if (this.score > 0 && this.score % 20 === 0 && this.level < 15) {
             this.level++;
             this.updateCharPool();
             this.fallSpeed += 0.2;
@@ -563,7 +563,7 @@ class Game {
 
     updateCharPool() {
         const pool = CHAR_POOLS[this.language];
-        this.charPool = pool.substring(0, this.level * 3);
+        this.charPool = pool.substring(0, this.level * 2);
         // Re-render the keyboard to reflect newly added training letters
         this.renderKeyboard();
     }
